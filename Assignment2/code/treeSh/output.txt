@@ -1,0 +1,47 @@
+zinovi [0]$ plist
+1: systemd
+2: kthreadd
+
+...
+
+105870: kworker/1:0
+105871: kworker/1:3-i915-unordered
+106026: treeSh
+zinovi [1]$ pstree -p 106026
+treeSh(106026)---pstree(106072)
+zinovi [2]$ grow 2
+zinovi [3]$ pstree -p 106026
+treeSh(106026)-+-pstree(106129)
+               |-treeSh(106093)-+-treeSh(106097)
+               |                `-treeSh(106099)
+               `-treeSh(106096)-+-treeSh(106101)
+                                `-treeSh(106102)
+zinovi [4]$ pstree -p 106026 >tmp.txt
+Set stdout to tmp.txt
+zinovi [5]$ cat tmp.txt
+treeSh(106026)-+-pstree(106225)
+               |-treeSh(106093)-+-treeSh(106097)
+               |                `-treeSh(106099)
+               `-treeSh(106096)-+-treeSh(106101)
+                                `-treeSh(106102)
+zinovi [6]$ delegate pstree -p 106026 >tmp.txt
+zinovi [7]$ cat tmp.txt
+treeSh(106026)-+-treeSh(106093)-+-treeSh(106097)---pstree(106294)
+               |                `-treeSh(106099)
+               `-treeSh(106096)-+-treeSh(106101)
+                                `-treeSh(106102)
+zinovi [8]$ prune
+zinovi [9]$ pstree -p 106026
+treeSh(106026)-+-pstree(106362)
+               `-treeSh(106096)---treeSh(106102)
+zinovi [10]$ grow 2
+zinovi [11]$ pstree -p 106026
+treeSh(106026)-+-pstree(106414)
+               |-treeSh(106096)-+-treeSh(106102)
+               |                `-treeSh(106393)
+               `-treeSh(106392)-+-treeSh(106394)
+                                `-treeSh(106396)
+zinovi [12]$ uproot
+zinovi [13]$ pstree -p 106026
+treeSh(106026)---pstree(106457)
+zinovi [14]$ exit

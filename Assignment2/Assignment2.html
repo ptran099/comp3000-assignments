@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang=""><head>
+  <meta charset="utf-8">
+  <meta name="generator" content="pandoc">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Assignment1</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+</head><body><h1 id="assignment_1">Assignment 2</h1>
+<p>This Assignment is based on Chapter the Chapter 3 "Processes and IPC" from the course book.&nbsp;</p>
+<p>This assignment will allow you to familiarize yourself with ordinary pipes, output redirection, and the basics of command-line interface. The assignment presumes that you have had some experience using FILE* operations fread,fwrite, and thus will be prepared for the use of lower level read/write system calls.</p>
+<h2 id="general_instructions_same_for_all_assignments">General Instructions (same for all assignments)</h2>
+<p>Assignments are for you to gather some <b>hands-on experience</b> with the course's direct and related material. In many cases, there is <b>no single correct</b> answer. As long as your research and experience are clearly documented and supported by the submitted material, your grade will not greatly diminish, even if your answers do not match the supposed "ideal". So, please, always turn in your work.</p>
+<p>Submit your answers on Brightspace in the main section of the course.&nbsp;</p>
+<p>You are asked to submit a single file in all cases.</p>
+<p>If your Assignment <b>does not</b> ask you to modify code, then submit a single text file named "&lt;username&gt;-comp3000-a&lt;n&gt;.txt" (where &lt;username&gt; is your MyCarletonOne username and &lt;n&gt; is the assignment number). The first four lines of this file should be "COMP 3000 Assignment &lt;n&gt;", your name, student number, and the date of submission. Your submitted answers must at least respond to all the items in the <strong>Tasks/Questions</strong> section.</p>
+<p>If your Assignment <b>does</b> ask you to modify code, then submit a single ZIP file named "&lt;username&gt;-comp3000-a&lt;n&gt;.zip" (where &lt;username&gt; is your MyCarletonOne username and &lt;n&gt; is the assignment number). This file should unpack into a directory named "&lt;username&gt;-comp3000-a&lt;n&gt;" that contains the modified code <b>and</b> a text file "&lt;username&gt;-comp3000-a&lt;n&gt;.txt", which will contain the answers to non-programming questions (see above).</p>
+<p>The deadline is defined by the Assignment's submit portal, and will be publicized via an Announcement as well. The deadline is calculated so that every Tutorial group will have a chance to receive support from their TA during the Tutorial time. The deadline is common for all students and is calculated so that under normal workload you should be able to complete it at least 2 days before the formal deadline. Please calculate your work plan to aim to finish your work about 2 days before the formal deadline.&nbsp; Note that the submission entry deadline is enforced by the system, so you may fail to get the effort marks even if it is one minute past the deadline.</p>
+<p>You should also check in with your assigned TA. Your TA will be your first point of contact when you have questions or encounter any issues with an Assignment.</p>
+<p>Read through the instructions before starting your work to get an overall picture. When source files are needed, you can download them by clicking on the hyperlink.</p>
+<h2 id="getting_started">Getting Started</h2>
+<p>For the Assignments, you need to get access to a Linux machine. We strongly suggest you use an SCS Openstack instance or the relevant VM.&nbsp;</p>
+<p>You should begin by familiarising yourself with the system calls:</p>
+<ul>
+<li>fork()</li>
+<li>exit()</li>
+<li>pipe()</li>
+<li>dup2()</li>
+<li>close()</li>
+</ul>
+<p>Recall that <strong>man</strong> pages are very detailed and will correspond to the exact calls available at the system, as opposed to Google searches that may give you examples that do not correspond to the libraries you have in your VM.</p>
+<p>Feel free to discuss this Assignment with other students, but take care: should you be asked a question about the Assignment's material during a quiz, it is your responsibility to know the answer.</p>
+<h2 id="background">Background</h2>
+<h3 id="processes">Shell</h3>
+<p>COMP 2401 has prepared you to work with shell, including concepts of input/output redirection ("&lt;","&gt;", and "|"). The last one in the list is the "pipe". In class we have seen a code snippet that demonstrated the creation and the use of an ordinary pipe by a parent and a child process. Input/output redirection in shells is implemented by using this mechanism combined with file-descriptor duplication/override.&nbsp;</p>
+<h3 id="controlling_processes">FILE* vs file descriptor</h3>
+<p>Standard C library, which you have used in COMP2401 allowed you to package standard system calls into a more convenient API: fopen, fclose, fread, fwrite.</p>
+<p>These functions worked with pointers to a "stream" structure: FILE*. This, however, is by itself an abstraction/packaging. At the lower level, system maintains a finite array of "stream" structures and works with an index into this array. We call this index a "file descriptor". In the code snippet for pipe(), which we saw in class, the system call initialised two "stream" structures and returned their indices (by placing them in the array you gave it as an argument).&nbsp;</p>
+<p>Operations with file descriptors are the same as with FILE*, but using system calls: close(), write(), read(). System call open() works in the same way as fopen, returning an index of the newly initialised "stream" structure. We will study these in great detail later in the course.</p>
+<h3 id="controlling_processes">File descriptor "duplication" to redirect standard input/output.</h3>
+<p>As you have learned in COMP2401, there is a set of standard streams: stdin, stdout, stderr. That's why printf("This is just a hello\n") is equivalent to fprintf(stdout,"This is just a hello\n"). But, in the <a href="https://people.scs.carleton.ca/%7Elanthier/teaching/COMP2401/Notes/COMP2401_Ch6_StreamsAndFileIO.pdf" target="_blank" rel="noopener">relevant notes</a>, you can also notice numbers being used to describe them: 0 (stdin), 1(stdout), 2 (stderr). These are the indices into the system's array of "stream" structures. Those structs are initialised to defaults by the system, but can be overridden. In other words, we can ask the system to re-initialise the underlying data structure to something else. That way, any time a process tries to access stdin (file descriptor index zero) a different "stream" will be accessed than the standard input.</p>
+<p>The system call that achieves it is dup2(). There are two places where you can find a sample of its use. First, in the <a href="Supplementary/code/treeSh/pipe_redirect.c?isCourseFile=true" target="_blank" rel="noopener">sample code</a> that gives a bare-bones example of pipe+dup2, the other is in the baseline code for this Assignment.</p>
+<h3 id="processes">Baseline Code</h3>
+<p><strong>Baseline source code </strong>is a mini-shell called <a href="Supplementary/code/treeSh/treeSh.c?isCourseFile=true" target="_blank" rel="noopener">treeSh (this is a link to the source).</a></p>
+<p>It can be compiled by running: "gcc -O2 treeSh.c -o treeSh"&nbsp;</p>
+<p>This treeSh has 4 built-in commands which it already recognises, but which have been hollowed out and left for you to&nbsp;<strong>re-implement:</strong>&nbsp;</p>
+<ul>
+<li>grow &lt;n&gt;</li>
+<li>prune</li>
+<li>uproot</li>
+<li>delegate &lt;command&gt;</li>
+</ul>
+<p>treeSh also has some additional functionalities that you can explore.</p>
+<ul>
+<li>plist
+<ul>
+<li>Produces a list of currently running processes. If you run it from a treeSh instance, you will see treeSh itself appearing on the list.</li>
+</ul>
+</li>
+<li>running system programs (including redirect into a file)
+<ul>
+<li>For example you can write "ls &gt;file_list.txt".</li>
+<li>or you can run a command in a "background" by issuing a command like "ls &amp;"</li>
+</ul>
+</li>
+</ul>
+<p>You are recommended to explore these functionalities for some inspiration to solve this Assignment. Please notice that the code is built for teaching, not production. It is unstable, and you can have a lot of fun finding its weaknesses. For example:</p>
+<ul>
+<li>Is there a difference between "ls&amp;" and "ls &amp;"? How can you resolve it?</li>
+<li>Is there a difference between "ls &gt; tmp.txt" and "ls &gt;tmp.txt"? How can you resolve it?</li>
+<li>Can you make 'plist' print the parent ID as well as the process ID? Something like "5123 ls (5122)".&nbsp;</li>
+</ul>
+<h2 id="tasksquestions">Tasks/Questions</h2>
+<p>You are to complete the implementation of the functions grow(), prune(), uproot(), and delegate() to support the following functionality of treeSh:</p>
+<ol>
+<li>treeSh command "grow &lt;n&gt;" creates a complete subtree of its clones (naturally using fork()) of a given depth. The branching factor is defined by a macro BRANCH_NUM. Every child in this sub-tree has its stdin replaced by a pipe input end. That way the parent can "type in" commands to the child by writing into the pipe. This sub-tree can be confirmed using the command "pstree -p &lt;parent_pid&gt;"</li>
+<li>treeSh command "prune" cuts the sub-tree down, so that only a single branch of the youngest children remain</li>
+<li>treeSh command "uproot" removes the sub-tree completely</li>
+<li>treeSh command "delegate &lt;command&gt;" sends the &lt;command&gt; down the tree, so that the farthest descendant along the (currently existing) oldest children executes that command. If there are no "tree" children, then the main process of treeSh executes the &lt;command&gt;</li>
+</ol>
+<p>A record (slightly beautified) of a possible interaction can be found here: <a href="Supplementary/code/treeSh/output.txt?isCourseFile=true" target="_blank" rel="noopener">output.txt</a></p>
+<p><strong>Edge cases:</strong>&nbsp;</p>
+<ul>
+<li>There should be no interference to these processes from any other child processes that do not participate in the tree structure.</li>
+<li>If 'grow' is called after prune, then the existing children sprout new kids, so that the full tree is restored.&nbsp;</li>
+<li>If you 'grow', 'prune', 'grow', then the youngest children of the first tree become the elders of the second tree.</li>
+</ul>
+<p>Your code should compile without errors. Only warnings that appear in the original source code are permitted. All messages should terminate with "\n", as is exemplified in the original code.&nbsp;</p>
+<p><strong>Once again notice, that the published code is an educational resource, not a production code.</strong></p>
+<p></p></body></html>
