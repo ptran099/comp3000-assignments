@@ -41,7 +41,7 @@ const char *proc_prefix = "/proc";
 static int command_count = 0;
 /* this is where the parent treeSh keeps the output ends of pipes to "tree" children */
 static int children_feeds_fd[BRANCH_NUM];
-/* this is where the parent keeps track of "tree" children ids
+/* this is where the parent keeps track of "tree" children ids */
 static int children_pids[BRANCH_NUM];
 /* Extras for Assignment 2 End */
 
@@ -229,7 +229,17 @@ void grow(int levels)
     Please notice that if there was a "tree" child shell already, then the newly spawned shell child is "younger" and has to be recorded as such.
   */
 
-   fprintf(stdout,"TreeSh %d: my tree is now fully grown\n", my_pid);
+
+   for (int i = 0; i < BRANCH_NUM; i++) {
+	   int f = fork();
+	   if (f == 0)
+		   grow(levels - 1);
+	   else
+		   children_pids[i] = f;
+	printf("fork() value is: %d\n", children_pids[i]);
+   }
+
+   fprintf(stdout, "TreeSh %d: my tree is now fully grown\n", my_pid);
    fflush(stdout);
    
 }
@@ -463,8 +473,7 @@ void process_command(int nargs, char *args[], char *path, char *envp[])
   //	command_count = command_count + 1;  
 }
 
-void prompt_loop(char *username, char *path, char *envp[])
-{
+void prompt_loop(char *username, char *path, char *envp[]) {
         char buffer[BUFFER_SIZE];
         char *args[ARR_SIZE];
         
@@ -493,8 +502,7 @@ void prompt_loop(char *username, char *path, char *envp[])
 	}    
 }
 
-int main(int argc, char *argv[], char *envp[])
-{
+int main(int argc, char *argv[], char *envp[]) {
         struct sigaction signal_handler_struct;
                 
         char *username;
