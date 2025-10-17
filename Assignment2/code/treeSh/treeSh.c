@@ -207,6 +207,10 @@ void delegate(int argc, char *argv[], char *path, char *envp[])
   }
 }
 
+/*
+        Recursively grow tree to reach desired height where basecase is levels <= 0
+
+*/
 void grow(int levels)
 {
   pid_t my_pid;
@@ -221,27 +225,28 @@ void grow(int levels)
 
    fprintf(stdout,"TreeSh %d is growing\n", my_pid);
    fflush(stdout);
-   
-  /*
-    If you do not have enough children (< BRANCH_NUM), fork more...
-    Children you have should check if they have enough children ...
-    For every new "tree" child setup a common pipe IPC, so that the parent shell can "type in" commands for the child shell. 
-    Please notice that if there was a "tree" child shell already, then the newly spawned shell child is "younger" and has to be recorded as such.
-  */
-
 
    for (int i = 0; i < BRANCH_NUM; i++) {
-	   int f = fork();
-	   if (f == 0)
-		   grow(levels - 1);
-	   else
-		   children_pids[i] = f;
-	printf("fork() value is: %d\n", children_pids[i]);
-   }
+        if (children_pids[i] <= 0) {
+                pid_t newpid = fork();
+                if (newpid <= -1) {
+                        perror("fork");
+                        exit(EXIT_FAILURE);
+                }
+                else if (newpid == 0) {
+                        // Inside child process
+                        grow(levels - 1); // Height of tree is from root node to leaves
+                        pause(); // Needed this to prevent the process tree terminating before they could be displayed using pstree -p <pid>, wait(NULL) didn't work
+                } 
+                else {
+                        // Inside parent process
+                        children_pids[i] = newpid; // Set children pids
+                }
+        }
+    }
 
-   fprintf(stdout, "TreeSh %d: my tree is now fully grown\n", my_pid);
+   fprintf(stdout,"TreeSh %d: my tree is now fully grown\n", my_pid);
    fflush(stdout);
-   
 }
 
 void prune()
