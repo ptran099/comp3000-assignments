@@ -1,0 +1,10 @@
+COMP 3000 Assignment 2
+Peter Tran
+101016263
+October 17, 2025
+1. grow(): initially grew process tree with recursion, on second approach it was clearly not the path to take in light
+of other functions being implemented along with pipes. Also tracking the child PIDs 1 level down in arrays 
+for each parent process.
+2. prune(): remove all branches except 1 youngest
+3. uproot(): must kill entire tree using cascading termination.
+4. delegate(): must delegate to eldest child process

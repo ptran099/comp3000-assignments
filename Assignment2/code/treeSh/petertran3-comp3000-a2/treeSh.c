@@ -173,118 +173,187 @@ void setup_comm_fn(char *pidstr, char *comm_fn)
  *
  */
 
+/*
+        delegate <command> sends the <command> down the tree, so that the farthest descendant 
+        along the (currently existing) oldest children executes that command. If there are no 
+        "tree" children, then the main process of treeSh executes the <command>
+*/
 void delegate(int argc, char *argv[], char *path, char *envp[])
 {
-  pid_t my_pid;
-  int has_children = 0;
+        pid_t my_pid;
+        int has_children = 0;
 
-  my_pid = getpid();
+        my_pid = getpid();
 
-  if(argc<2) {
-    fprintf(stdout,"TreeSh %d can't delegate nothing\n", my_pid);
-    fflush(stdout);
-    return;
-  }
+        if(argc<2) {
+        fprintf(stdout,"TreeSh %d can't delegate nothing\n", my_pid);
+        fflush(stdout);
+        return;
+        }
 
-  
-  /* Check if there are children here
+        
+        /* Check if there are children here
 
-     has_children = ..... some check that you should do
-     
-   */
-  
-  if (has_children) {
-    fprintf(stdout,"TreeSh %d delegates to the eldest child\n", my_pid);
-    fflush(stdout);
-    /*
-      If there are "tree" children, delegate the command to the eldest child (who will delegate to their eldest child.....)
-    */
-  } else {
-    /*... process the command yourself */
-    fprintf(stdout,"TreeSh %d can't delegate and will do the command on its own\n", my_pid);
-    fflush(stdout);
-    process_command(argc-1, &(argv[1]), path, envp);
-  }
+        has_children = ..... some check that you should do
+        
+        */
+                int oldest_tree_pid = -1;
+
+                for(int i = 0; i < BRANCH_NUM; i++) {
+                        if (children_pids[i] > 0){
+                                if (has_children = 0) {
+                                        has_children = 1;
+                                        oldest_tree_pid = children_pids[i];
+                                }
+                                else {
+                                        if (oldest_tree_pid > children_pids[i]) oldest_tree_pid = children_pids[i];
+                                }
+                        }
+                }
+        
+        if (has_children) {
+        fprintf(stdout,"TreeSh %d delegates to the eldest child\n", my_pid);
+        fflush(stdout);
+        /*
+        If there are "tree" children, delegate the command to the eldest child (who will delegate to their eldest child.....)
+        */
+        /* TODO: Implementation commands piped to eldest child*/
+                char messages[] = "cmd\n";
+                if (write(children_feeds_fd[1], messages, sizeof(messages)) == -1) {
+                        perror("write");
+                        exit(EXIT_FAILURE);
+                }
+        } else {
+        /*... process the command yourself */
+        /* TODO */
+        fprintf(stdout,"TreeSh %d can't delegate and will do the command on its own\n", my_pid);
+        fflush(stdout);
+        process_command(argc-1, &(argv[1]), path, envp);
+        }
 }
 
 /*
-        Recursively grow tree to reach desired height where basecase is levels <= 0
-
+        Grow tree to reach desired height where basecase is levels <= 0 and delegate for children
 */
 void grow(int levels)
 {
-  pid_t my_pid;
-  
-  if (levels <= 0) {
-    fprintf(stdout,"TreeSh thinks you're funny, growing trees backwards\n");
-    fflush(stdout);
-    return;
-  }
+        pid_t my_pid;
+
+        if (levels <= 0) {
+        fprintf(stdout,"TreeSh thinks you're funny, growing trees backwards\n");
+        fflush(stdout);
+        return;
+        }
     
-   my_pid = getpid();
+        my_pid = getpid();
 
-   fprintf(stdout,"TreeSh %d is growing\n", my_pid);
-   fflush(stdout);
+        fprintf(stdout,"TreeSh %d is growing\n", my_pid);
+        fflush(stdout);
 
-   for (int i = 0; i < BRANCH_NUM; i++) {
-        if (children_pids[i] <= 0) {
-                pid_t newpid = fork();
-                if (newpid <= -1) {
-                        perror("fork");
-                        exit(EXIT_FAILURE);
+        for (int i = 0; i < BRANCH_NUM; i++) {
+                if (children_pids[i] <= 0) {
+                        int fd[2];
+                        // create pipe
+                        if(pipe(fd) == -1) {
+                                perror("pipe");
+                                exit(EXIT_FAILURE);
+                        }
+                        pid_t newpid = fork(); // Fork process
+                        if (newpid <= -1) {
+                                perror("fork");
+                                exit(EXIT_FAILURE);
+                        }
+                        else if (newpid == 0) {
+                                // Inside child process, close write end of pipe
+                                close(fd[1]);
+                                dup2(fd[0], STDIN_FILENO);
+                                close(fd[0]);
+                                //if (levels - 1 > 0)
+                                        // RECURSION was not likely the intended solution in hindsight
+                                        //grow(levels - 1); // Height of tree is from root node to leaves
+                                //else 
+                                //pause();// Needed this to prevent the process tree terminating before they could be displayed using pstree -p <pid>, wait(NULL) didn't work
+                                wait(NULL);
+                        } 
+                        else {
+                                // Inside parent process, writes to pipe, close read end of the pipe
+                                close(fd[0]);
+                                children_feeds_fd[i] = fd[1];
+                                children_pids[i] = newpid; // Set children pids
+                        }
                 }
-                else if (newpid == 0) {
-                        // Inside child process
-                        grow(levels - 1); // Height of tree is from root node to leaves
-                        pause(); // Needed this to prevent the process tree terminating before they could be displayed using pstree -p <pid>, wait(NULL) didn't work
-                } 
                 else {
-                        // Inside parent process
-                        children_pids[i] = newpid; // Set children pids
+                        // Apparently need to regrow from existing children for grow-prune-grow test case
+                        char buffer[BUFFER_SIZE];
+                        int len = snprintf(buffer, sizeof(buffer), "grow %d\n", levels - 1); // must end message with \n
+                        write(children_feeds_fd[i], buffer, len);
                 }
         }
-    }
 
-   fprintf(stdout,"TreeSh %d: my tree is now fully grown\n", my_pid);
-   fflush(stdout);
+        fprintf(stdout,"TreeSh %d: my tree is now fully grown\n", my_pid);
+        fflush(stdout);
 }
 
+/*
+    Cut the sub-tree down so that only a single branch of the youngest children remain
+*/
 void prune()
 {
-  pid_t my_pid;
-  
-  my_pid = getpid();
+        pid_t my_pid;
+        
+        my_pid = getpid();
 
-  fprintf(stdout,"TreeSh %d is pruning\n", my_pid);
-  fflush(stdout);
-   
-  /*
-    If there are "tree" children, abort the eldest (and all its descendants), so that only one "tree" child remains.
-    Make sure that the youngest/remaining "tree" child also "prunes" its subtree.
-    Please notice that if there is only 1 "tree" child, then it should survive the pruning.
-   */
+        fprintf(stdout,"TreeSh %d is pruning\n", my_pid);
+        fflush(stdout);
+        
+        /*
+        If there are "tree" children, abort the eldest (and all its descendants), so that only one "tree" child remains.
+        Make sure that the youngest/remaining "tree" child also "prunes" its subtree.
+        Please notice that if there is only 1 "tree" child, then it should survive the pruning.
+        */
+        int tree_count = 0;
+        int youngest_tree_pid = -1;
+        for(int i = 0; i < BRANCH_NUM; i++) {
+                if(children_pids[i] != 0) {
+                        // Track the number of tree children
+                        tree_count++;
+                        // If the PID is higher valued in comparison, it is the younger tree.
+                        if (children_pids[i] > youngest_tree_pid) youngest_tree_pid = children_pids[i];
+                }
+        }
 
-  fprintf(stdout,"TreeSh %d is now a single branch\n", my_pid);
-  fflush(stdout);
-  
+        if (tree_count > 1) {
+                // do pruning here
+                for (int i = 0; i < BRANCH_NUM; i++) {
+                        if(children_pids[i] !=0 && children_pids[i] != youngest_tree_pid) {
+
+                        }
+                }
+        }
+
+        fprintf(stdout,"TreeSh %d is now a single branch\n", my_pid);
+        fflush(stdout);  
 }
 
+/*
+        Removes the sub-tree completely
+*/
 void uproot()
 {
-  pid_t my_pid;
-  
-  my_pid = getpid();
+        pid_t my_pid;
+        
+        my_pid = getpid();
 
-  fprintf(stdout,"TreeSh %d is uprooting\n", my_pid);
-  fflush(stdout);
+        fprintf(stdout,"TreeSh %d is uprooting\n", my_pid);
+        fflush(stdout);
 
-  /*
-    Abort all "tree" children and their sub-trees.
-    Hint: Cascading termination...
-   */
+        /*
+        Abort all "tree" children and their sub-trees.
+        Hint: Cascading termination...
+        */
 
-  fprintf(stdout,"TreeSh %d is all alone\n", my_pid);
-  fflush(stdout);
+        fprintf(stdout,"TreeSh %d is all alone\n", my_pid);
+        fflush(stdout);
 }
 
 /*
