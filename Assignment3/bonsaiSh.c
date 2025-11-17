@@ -161,10 +161,31 @@ int insert_delegate(int pid) {
 
   // find the insertion index
   /* Assignment-3 has to do something here */
+  for (i = 0; i < MAX_BONSAI_SIZE; i++) {
+    if (delegation->queue[i] == -1 || delegation->queue[i] > pid) {
+      break;
+    }
+  }
+
   // insert the new PID into the list (shift the tail)
   /* Assignment-3 has to do something here */  
+  // shift right
+  for (j = MAX_BONSAI_SIZE - 1; j > i; j--) {
+    delegation->queue[j] = delegation->queue[j-1];
+  }
+  delegation->queue[i] = pid;
+
   // handle a special case of delegate_idx initialisation, because delegate_idx starts from being -1
   /* Assignment-3 has to do something here */
+  if (delegation->delegate_idx == -1) {
+    delegation->delegate_idx = 0;
+  }
+  else if (i <= delegation->delegate_idx){
+    delegation->delegate_idx++; // Avoid rollback
+    if (delegation->delegate_idx >= MAX_BONSAI_SIZE) {
+      delegation->delegate_idx = 0;
+    }
+  }
   
 /* #ifdef DEBUG_TREESH */
 /*   /\* fprintf(stderr,"Insertion called by %d: ",getpid()); *\/ */
@@ -175,6 +196,7 @@ int insert_delegate(int pid) {
 /* #endif */
   
   /* Assignment-3 has to do something here */
+  pthread_mutex_unlock(&(delegation->delegate_mutex));
   return 0;
 }
 
@@ -374,9 +396,7 @@ void delegate(int argc, char *argv[], char *path, char *envp[])
   my_pid = getpid();
 
   /* Check if there are children here
-     
      has_children = ..... some check that you should do
-     
   */
   
   if (children_pids[0]>0) has_children = 1;
@@ -391,16 +411,15 @@ void delegate(int argc, char *argv[], char *path, char *envp[])
       return;
     }
     
-      
     if (has_children) {
       
       // recreate the buffer
       printed_len = 0;
       for (i=1; i<argc; i++) {
-	strncpy(&(buffer[printed_len]),argv[i],BUFFER_SIZE-printed_len);
-	printed_len += strlen(argv[i]);
-	buffer[printed_len]=' ';
-	printed_len++;
+        strncpy(&(buffer[printed_len]),argv[i],BUFFER_SIZE-printed_len);
+        printed_len += strlen(argv[i]);
+        buffer[printed_len]=' ';
+        printed_len++;
       }
       buffer[printed_len]='\0';
       
@@ -413,6 +432,7 @@ void delegate(int argc, char *argv[], char *path, char *envp[])
       
       // wait for completion if root
       /* Assignment-3 has to do something here  -- hint: sychronisation between processes using a semaphore */ 
+      sem_wait(&delegation->delegator_token);
     } else {
     /*... process the command yourself */
 #ifdef DEBUG_TREESH
@@ -424,8 +444,7 @@ void delegate(int argc, char *argv[], char *path, char *envp[])
   } else { // I am not-root (groot?)
 
     if (has_children) {
-      // delegate to all you cn
-      delegate_helper();
+      delegate_helper();// delegate to all you cn
     }
 
     // try to get the command
@@ -490,7 +509,8 @@ void grow(int levels)
 
      /* Assignment-3 Extra Begin */
 
-     grow_blocked = sem_trywait(&delegation->grow_token);
+     //grow_blocked = sem_trywait(&delegation->grow_token);
+     grow_blocked = sem_wait(&delegation->grow_token);
      if (grow_blocked != 0) {
 
 #ifdef DEBUG_TREESH
@@ -514,6 +534,7 @@ void grow(int levels)
 
        /* Assignment-3 Extra Start */
        /* Assignment-3 has to do something here -- hint: pipe failed, but did we get some other resources that we need to free now?*/ 
+       sem_post(&delegation->grow_token);
        /* Assignment-3 Extra End */
        
        return;      
@@ -533,6 +554,7 @@ void grow(int levels)
 
        /* Assignment-3 Extra Start */
        /* Assignment-3 has to do something here -- we just gave up the pipe, but did we get some other resources that we need to free now?*/ 
+       sem_post(&delegation->grow_token);
        /* Assignment-3 Extra End */
 
        return;
@@ -571,8 +593,7 @@ void grow(int levels)
        /* Assignment-3 Extra End */
        
        //finally grow some more :) if needed
-       if(levels>1)
-	 grow(levels-1);
+       if(levels>1) grow(levels-1);
        return; // and then go back to the prompt loop
      }
    }
@@ -817,6 +838,7 @@ void exit_prep() {
 
   if (level_count > 0) {
     /* Assignment-3 has to do something here -- hint: if this process was a helper in the tree, then it used some particular token. It no longer needs it. */
+    sem_post(&delegation->grow_token);
   }
 
   sleep(1);

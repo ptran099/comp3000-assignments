@@ -1,8 +1,32 @@
 Peter Tran
 101016263
 
-1.
-2.
-3.
-4.
-5.
+1. post_delegate() doesn't contain sem_wait() because that means the delegator is waiting 
+for the delegate to post delegator_token and delegate is waiting for the delegator to sem_post() delegator_token
+sem_wait() belongs in delegate() after calling delegate_helper().
+2. insert_delegate() is called in the child process because the child process ID is what needs to be inserted
+in the delegate queue.
+3. In grow():
+    grow_blocked = sem_trywait(&delegation->grow_token);
+    ...
+    insert_delegate(getpid());
+The grow_token semaphore is acquired before adding the delegate to the queue
+in exit_prep():
+    delete_delegate(getpid());
+    ...
+    sem_post(&delegation->grow_token);
+The delegate is removed from the queue before releasing the semaphore.
+They are done in this order to prevent race conditions related to the delegate queue.
+4. If sem_wait(...) was used instead of sem_trywait(...) in grow() the program could hang while growing
+because of sem_wait() blocking until the semaphore becomes available. sem_trywait simply returns an error
+if the semaphore isn't locked.
+5. The reason the tree is unbalanced when grow() uses higher numbers such as 4, is because of macros:
+#define MAX_BONSAI_SIZE 10
+which limits the delegate queue to 10 elements
+there are 10 child processes in the example:
+bonsaiSh(80728)-+-bonsaiSh(80757)-+-bonsaiSh(80759)-+-bonsaiSh(80763)
+                |                 |                 `-bonsaiSh(80764)
+                |                 `-bonsaiSh(80761)
+                |-bonsaiSh(80758)-+-bonsaiSh(80760)---bonsaiSh(80766)
+                |                 `-bonsaiSh(80762)---bonsaiSh(80765)
+                `-pstree(80798)
